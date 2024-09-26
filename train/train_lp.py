@@ -60,7 +60,7 @@ class LP_Trainer():
     def init_model(self):
         self.model = LatentPolicy(
             n_state=self.args.n_state,
-            n_latent_action=self.args.n_latent_action
+            n_latent_action=self.args.n_latent_action,
             units=self.args.units,
             units_p=self.args.units_p,
             alpha=self.args.alpha
