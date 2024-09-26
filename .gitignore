@@ -1,0 +1,8 @@
+# data directory
+/data/state_pairs
+
+# log files
+/logs
+
+# runs directory
+/runs

@@ -1,0 +1,143 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class StateEncoder(nn.Module):
+    def __init__(self, n_state: int, units: list, alpha: float=0.2):
+        super(StateEncoder, self).__init__()
+        self.n_state = n_state
+        self.units = units
+        self.alpha = alpha
+
+        self.hidden_layer = []
+        
+        for i in range(len(self.units)):
+            if i == 0:
+                self.hidden_layer.append(nn.Linear(self.n_state, self.units[i]))
+            else:
+                self.hidden_layer.append(nn.Linear(self.units[i-1], self.units[i]))
+            self.hidden_layer.append(nn.LeakyReLU(self.alpha))
+        
+        self.hidden_layer = nn.Sequential(*self.hidden_layer)
+    
+    def forward(self, s):
+        s_e = self.hidden_layer(s)
+
+        return s_e
+    
+class Policy(nn.Module):
+    def __init__(self, s_e_dim: int, n_latent_action: int, units: list, alpha: float=0.2):
+        super(Policy, self).__init__()
+        self.s_e_dim = s_e_dim
+        self.units = units
+        self.n_latent_action = n_latent_action
+        self.alpha = alpha
+
+        self.hidden_layer = []
+        
+        if len(self.units) != 0:
+            for i in range(len(self.units)):
+                if i == 0:
+                    self.hidden_layer.append(nn.Linear(self.s_e_dim, self.units[i]))
+                else:
+                    self.hidden_layer.append(nn.Linear(self.units[i-1], self.units[i]))
+                self.hidden_layer.append(nn.LeakyReLU(self.alpha))
+            self.hidden_layer.append(nn.Linear(self.units[-1], self.n_latent_action))
+        else:
+            self.hidden_layer.append(nn.Linear(self.s_e_dim, self.n_latent_action))
+        self.hidden_layer = nn.Sequential(*self.hidden_layer)
+        
+    def forward(self, s_e):
+        z_p = self.hidden_layer(s_e)
+        return z_p
+
+class Generator(nn.Module):
+    def __init__(self, s_e_dim: int, n_state: int, n_latent_action: int, units: list, alpha: float=0.2):
+        super(Generator, self).__init__()
+        self.s_e_dim = s_e_dim
+        self.n_state = n_state
+        self.n_latent_action = n_latent_action
+        self.units = units
+        self.alpha = alpha
+
+        self.action_encoder = nn.Sequential(
+            nn.Linear(self.n_latent_action, self.s_e_dim),
+            nn.LeakyReLU(self.alpha)
+        )
+
+        self.concat_layer = nn.Sequential(
+            nn.Linear(2*self.s_e_dim, self.s_e_dim),
+            nn.LeakyReLU(self.alpha)
+        )
+
+        self.hidden_layer = []
+        
+        for i in range(len(self.units)):
+            if i == 0:
+                self.hidden_layer.append(nn.Linear(self.s_e_dim, self.units[i]))
+                self.hidden_layer.append(nn.LeakyReLU(self.alpha))
+            else:
+                self.hidden_layer.append(nn.Linear(self.units[i-1], self.units[i]))
+                self.hidden_layer.append(nn.LeakyReLU(self.alpha))
+
+        self.hidden_layer.append(nn.Linear(self.units[i], self.n_state))
+        self.hidden_layer = nn.Sequential(*self.hidden_layer)
+        
+    def forward(self, s_e):
+        delta_s = []
+
+        for z in range(self.n_latent_action):
+            z_onehot = F.one_hot(torch.tensor(z), num_classes=self.n_latent_action).float()
+            z_onehot = z_onehot.unsqueeze(0).expand(s_e.shape[0], -1)
+
+            z_e = self.action_encoder(z_onehot)
+
+            concat = torch.cat((s_e, z_e), dim=-1)
+            concat = self.concat_layer(concat)
+
+            concat = self.hidden_layer(concat).unsqueeze(0) # (1, batch_size, n_state)
+            
+            if z == 0:
+                delta_s = concat
+            else:
+                delta_s = torch.cat((delta_s, concat), dim=0)
+
+        return delta_s
+
+class LatentPolicy(nn.Module):
+    def __init__(self, n_state: int, n_latent_action: int, units: list, units_p: list, alpha: float=0.2):
+        super(LatentPolicy, self).__init__()
+        self.n_state = n_state
+        self.n_latent_action = n_latent_action
+        self.units = units
+        self.units_p = units_p
+        self.alpha = alpha
+        self.s_e_dim = self.units[-1]
+
+        self.state_encoder = StateEncoder(self.n_state, self.units, self.alpha)
+        self.policy = Policy(self.units[-1], self.n_latent_action, self.units_p, self.alpha)
+        self.generator = Generator(self.units[-1], self.n_state, self.n_latent_action, self.units, self.alpha)
+    
+    def forward(self, x):
+        s_e = self.state_encoder(x)
+        z_p = self.policy(s_e)
+        delta_s = self.generator(s_e)
+
+        return z_p, delta_s
+    
+if __name__=="__main__":
+    n_state = 2
+    n_latent_action = 3
+    units = [64, 32]
+    units_p = []
+    alpha = 0.2
+    model_lp = LatentPolicy(n_state, n_latent_action, units, units_p, alpha)
+    
+    states = torch.randn(32, n_state)  # Batch size of 32
+
+    # Forward pass through the model
+    z_p, delta_s = model_lp(states)
+
+    # Check the shapes of the output tensors
+    print("z_p shape:", z_p.shape)  # Should be (32, n_latentaction)
+    print("delta_s shape:", delta_s.shape)  # Should be (3, 32, n_state)

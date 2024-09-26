@@ -10,3 +10,9 @@ def loss_function(x_recon, x, mu, sigma):
     kld_loss = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp())
     
     return recon_loss + kld_loss
+
+def initialize_weights(model):
+    for m in model.modules():
+        if isinstance(m, nn.Linear):
+            nn.init.trunc_normal_(m.weight, std=0.01)  # Truncated normal 초기화
+            nn.init.constant_(m.bias, 0.01)           # 편향을 0.01로 초기화
