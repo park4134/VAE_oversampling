@@ -3,10 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class StateEncoder(nn.Module):
-    def __init__(self, n_state: int, units: list, alpha: float=0.2):
+    def __init__(self, n_state: int, units: list, device: str='cuda:0', alpha: float=0.2):
         super(StateEncoder, self).__init__()
         self.n_state = n_state
         self.units = units
+        self.device = device
         self.alpha = alpha
 
         self.hidden_layer = []
@@ -26,12 +27,14 @@ class StateEncoder(nn.Module):
         return s_e
     
 class Policy(nn.Module):
-    def __init__(self, s_e_dim: int, n_latent_action: int, units: list, alpha: float=0.2):
+    def __init__(self, s_e_dim: int, n_latent_action: int, units: list, device: str='cuda:0', alpha: float=0.2):
         super(Policy, self).__init__()
         self.s_e_dim = s_e_dim
         self.units = units
         self.n_latent_action = n_latent_action
+        self.device = device
         self.alpha = alpha
+        self.device = device
 
         self.hidden_layer = []
         
@@ -52,12 +55,13 @@ class Policy(nn.Module):
         return z_p
 
 class Generator(nn.Module):
-    def __init__(self, s_e_dim: int, n_state: int, n_latent_action: int, units: list, alpha: float=0.2):
+    def __init__(self, s_e_dim: int, n_state: int, n_latent_action: int, units: list, device: str='cuda:0', alpha: float=0.2):
         super(Generator, self).__init__()
         self.s_e_dim = s_e_dim
         self.n_state = n_state
         self.n_latent_action = n_latent_action
         self.units = units
+        self.device = device
         self.alpha = alpha
 
         self.action_encoder = nn.Sequential(
@@ -87,10 +91,11 @@ class Generator(nn.Module):
         delta_s = []
 
         for z in range(self.n_latent_action):
+            # z_onehot = F.one_hot(torch.tensor(z, device=self.device), num_classes=self.n_latent_action).float()
             z_onehot = F.one_hot(torch.tensor(z), num_classes=self.n_latent_action).float()
             z_onehot = z_onehot.unsqueeze(0).expand(s_e.shape[0], -1)
 
-            z_e = self.action_encoder(z_onehot)
+            z_e = self.action_encoder(z_onehot.to(device=self.device))
 
             concat = torch.cat((s_e, z_e), dim=-1)
             concat = self.concat_layer(concat)
@@ -105,18 +110,23 @@ class Generator(nn.Module):
         return delta_s
 
 class LatentPolicy(nn.Module):
-    def __init__(self, n_state: int, n_latent_action: int, units: list, units_p: list, alpha: float=0.2):
+    def __init__(self, n_state: int, n_latent_action: int, units: list, units_p: list, device: str='cuda:0', alpha: float=0.2):
         super(LatentPolicy, self).__init__()
         self.n_state = n_state
         self.n_latent_action = n_latent_action
         self.units = units
         self.units_p = units_p
+        self.device = device
         self.alpha = alpha
         self.s_e_dim = self.units[-1]
 
-        self.state_encoder = StateEncoder(self.n_state, self.units, self.alpha)
-        self.policy = Policy(self.units[-1], self.n_latent_action, self.units_p, self.alpha)
-        self.generator = Generator(self.units[-1], self.n_state, self.n_latent_action, self.units, self.alpha)
+        self.state_encoder = StateEncoder(self.n_state, self.units, self.device, self.alpha)
+        self.policy = Policy(self.units[-1], self.n_latent_action, self.units_p, self.device, self.alpha)
+        self.generator = Generator(self.units[-1], self.n_state, self.n_latent_action, self.units, self.device, self.alpha)
+
+        self.state_encoder.to(device=self.device)
+        self.policy.to(device=self.device)
+        self.generator.to(device=self.device)
     
     def forward(self, x):
         s_e = self.state_encoder(x)

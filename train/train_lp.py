@@ -18,10 +18,16 @@ from utils import *
 
 class LP_Trainer():
     def __init__(self):
-        self.args = self.parse_args
+        self.args = self.parse_args()
         self.device = 'cuda:0'
+        # self.device = 'cpu'
         self.best_val_loss = float('inf')
         self.patience_counter = 0
+
+        self.init_data()
+        self.init_model()
+        self.init_optimizer()
+        self.init_logger()
 
     def parse_args(self):
         parser = argparse.ArgumentParser(description="Train a reinforcement learning agent")
@@ -30,8 +36,8 @@ class LP_Trainer():
         parser.add_argument("--data_name", type=str, help="Expert's data name")
         parser.add_argument("--n_state", type=int, help="n_state", default=2)
         parser.add_argument("--n_latent_action", type=int, help="n_latent_action", default=3)
-        parser.add_argument("--units", type=list, help="units", default=[64, 32])
-        parser.add_argument("--units_p", type=list, help="units_p", default=[])
+        parser.add_argument('--units', nargs='*', type=int, help='Input units list of integers')
+        parser.add_argument('--units_p', nargs='*', type=int, help='Input units_p list of integers')
         parser.add_argument("--alpha", type=float, help="alpha of LeakyReLU", default=0.2)
         parser.add_argument("--batch", type=int, help="batch size", default=32)
         parser.add_argument("--epochs", type=int, help="epochs", default=1000)
@@ -45,8 +51,8 @@ class LP_Trainer():
         data_path = os.path.join(os.getcwd(), 'data', 'state_pairs', self.args.env_name, self.args.data_name)
         data = np.load(data_path)
 
-        val_idx = np.random.choice(len(data), len(data)*self.args.val_ratio, replace=False)
-        train_idx = np.setdiff1d(np.arange(data), val_idx)
+        val_idx = np.random.choice(len(data), int(len(data)*self.args.val_ratio), replace=False)
+        train_idx = np.setdiff1d(np.arange(len(data)), val_idx)
 
         train_data, val_data = data[train_idx], data[val_idx]
 
@@ -63,11 +69,15 @@ class LP_Trainer():
             n_latent_action=self.args.n_latent_action,
             units=self.args.units,
             units_p=self.args.units_p,
-            alpha=self.args.alpha
+            alpha=self.args.alpha,
+            device=self.device
         )
 
         self.model.to(device=self.device)
         initialize_weights(self.model)
+
+        # for name, param in self.model.named_parameters():
+        #     print(f"Parameter '{name}' is on device: {param.device}")
     
     def init_optimizer(self):
         # Initialize optimizers
@@ -79,7 +89,7 @@ class LP_Trainer():
 
     def init_logger(self):
         # Initialize TensorBoard logger
-        log_dir = os.path.join(os.getcwd(), 'logs', self.env_name, 'LP', self.args.version)
+        log_dir = os.path.join(os.getcwd(), 'logs', self.args.env_name, 'latent_policy', self.args.version)
         if not os.path.isdir(log_dir):
             os.makedirs(log_dir)
         self.writer = SummaryWriter(log_dir=log_dir)
@@ -120,34 +130,36 @@ class LP_Trainer():
         val_loss = 0.0
 
         with torch.no_grad():
-            for batch in self.valid_dataloader:
+            for batch in self.val_dataloader:
                 s = batch['state'].to(device=self.device)
                 delta_s = batch['delta_s'].to(device=self.device)
 
                 z_p, delta_s_hat = self.model(s)
                 entropy = -torch.sum(F.softmax(z_p, dim=-1) * torch.log(F.softmax(z_p, dim=-1) + 1e-8), dim=1)
-                loss = loss_min(delta_s, delta_s_hat) + loss_exp(delta_s, z_p, delta_s_hat) + self.lambda_epsilon * torch.mean(entropy)
+                # loss = loss_min(delta_s, delta_s_hat) + loss_exp(delta_s, z_p, delta_s_hat) + self.lambda_epsilon * torch.mean(entropy)
+                loss = loss_min(delta_s, delta_s_hat) + loss_exp(delta_s, z_p, delta_s_hat)
                 val_loss += loss.item()
 
-        val_loss /= len(self.valid_dataloader)
+        val_loss /= len(self.val_dataloader)
         return val_loss
 
-    def _save_model(self):
+    def save_model(self):
         self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'latent_policy', self.args.version)
         if not os.path.isdir(self.save_path):
             os.makedirs(self.save_path)
-        torch.save(self.model.state_dict(), self.save_path)
+        torch.save(self.model.state_dict(), os.path.join(self.save_path, 'best_model.pth'))
         print('Model saved!')
 
-    def _save_config(self):
+    def save_config(self):
         config = vars(self.args)
+        config['val_loss'] = self.best_val_loss
         with open(os.path.join(self.save_path, 'config.yaml'), 'w') as file:
             yaml.dump(config, file, default_flow_style=False)
     
     def train(self):
         for epoch in range(self.args.epochs):
-            train_loss = self._train_one_epoch(epoch)
-            val_loss = self._validate()
+            train_loss = self.train_one_epoch(epoch)
+            val_loss = self.validate()
 
             # Update progress bar with validation loss
             print(f"Epoch [{epoch+1}/{self.args.epochs}] - Train Loss: {train_loss:.3f}, Val Loss: {val_loss:.3f}")
@@ -156,14 +168,13 @@ class LP_Trainer():
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
                 self.patience_counter = 0
-                self._save_model()
+                self.save_model()
             else:
                 self.patience_counter += 1
                 if self.patience_counter >= self.args.patience:
-                    self._save_config()
+                    self.save_config()
                     print('Early stopping!')
                     break
-            self._save_config()
 
         print('Finished Training')
 

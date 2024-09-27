@@ -50,7 +50,7 @@ class ExpertTrainer():
         return args
 
     def get_save_path(self):
-        self.save_path = os.path.join(os.getcwd(), 'runs', 'experts', self.args.env_name)
+        self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'experts')
         self.name = f"{self.args.version}_{self.args.method}"
         if not os.path.isdir(self.save_path):
             os.makedirs(self.save_path)

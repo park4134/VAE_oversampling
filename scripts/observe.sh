@@ -1,1 +1,1 @@
-python data/observe.py --env_name MountainCar-v0 --data_len 50000 --expert model0_DQN_-117.74 --method DQN --eps 0.0
+python data/observe.py --env_name MountainCar-v0 --data_len 10000 --expert model0_DQN_-117.74 --method DQN --eps 0.0
