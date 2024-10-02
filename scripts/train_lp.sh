@@ -1,1 +1,0 @@
-python train/train_lp.py --version model0 --env_name MountainCar-v0 --data_name model0_DQN_-117.74_50000_0.0.npy --n_state 2 --n_latent_action 3 --units 64 32 --units_p --alpha 0.2 --batch 32 --epochs 100 --lr 0.0002 --patience 30 --val_ratio 0.1 

@@ -7,6 +7,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 
+from glob import glob
+
 class SaveOnBestTrainingRewardCallback(BaseCallback):
     def __init__(self, version: str, check_freq: int, save_path: str, verbose: int = 1):
         super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
@@ -45,12 +47,12 @@ class ExpertTrainer():
         parser.add_argument("--env_name", type=str, help="Environment name.", default='MountainCar-v0')
         parser.add_argument("--method", type=str, help="Expert's method.", default='PPO')
         parser.add_argument("--steps", type=int, help="Steps of training", default=1e6)
-        parser.add_argument("--version", type=str, help="Version of expert", default='model')
         args = parser.parse_args()
         return args
 
     def get_save_path(self):
-        self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'experts')
+        num = len(glob(os.path.join(os.getcwd(), 'runs', self.args.env_name, 'experts', 'model*')))
+        self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'experts', f'model{num+1}')
         self.name = f"{self.args.version}_{self.args.method}"
         if not os.path.isdir(self.save_path):
             os.makedirs(self.save_path)

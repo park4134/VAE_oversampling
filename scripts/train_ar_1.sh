@@ -1,0 +1,1 @@
+python train/train_ar.py --env_name MountainCar-v0 --lp_name model1 --n_action 3 --units 64 32 --batch 32 --steps 30000 --lr 0.002 --patience 30 --eps 0.2 --eps_decay 1.0 --eps_min 0.05

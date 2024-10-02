@@ -11,7 +11,6 @@ class Data(Dataset):
     def __init__(self, data):
         self.data = data
         state, next_state = self.data[0]
-
     def __len__(self):
         return len(self.data)
     

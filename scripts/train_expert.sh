@@ -1,1 +1,1 @@
-python train/train_expert.py --env_name MountainCar-v0 --method DQN --steps 2000000 --version model0
+python train/train_expert.py --env_name MountainCar-v0 --method DQN --steps 2000000

@@ -4,17 +4,19 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from tqdm.auto import tqdm
 
 import os
-import numpy as np
-import argparse
-import yaml
-
 import sys
+import yaml
+import argparse
+import numpy as np
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from models.latent_policy import *
+from models import LatentPolicy
 from utils import *
+
+from tqdm.auto import tqdm
+from glob import glob
 
 class LP_Trainer():
     def __init__(self):
@@ -31,13 +33,13 @@ class LP_Trainer():
 
     def parse_args(self):
         parser = argparse.ArgumentParser(description="Train a reinforcement learning agent")
-        parser.add_argument("--version", type=str, help="Version of model", default='model')
         parser.add_argument("--env_name", type=str, help="Environment name", default='MountainCar-v0')
         parser.add_argument("--data_name", type=str, help="Expert's data name")
         parser.add_argument("--n_state", type=int, help="n_state", default=2)
         parser.add_argument("--n_latent_action", type=int, help="n_latent_action", default=3)
-        parser.add_argument('--units', nargs='*', type=int, help='Input units list of integers')
+        parser.add_argument('--units_se', nargs='*', type=int, help='Input units_se list of integers')
         parser.add_argument('--units_p', nargs='*', type=int, help='Input units_p list of integers')
+        parser.add_argument('--units_g', nargs='*', type=int, help='Input units_g list of integers')
         parser.add_argument("--alpha", type=float, help="alpha of LeakyReLU", default=0.2)
         parser.add_argument("--batch", type=int, help="batch size", default=32)
         parser.add_argument("--epochs", type=int, help="epochs", default=1000)
@@ -48,7 +50,7 @@ class LP_Trainer():
         return args
 
     def init_data(self):
-        data_path = os.path.join(os.getcwd(), 'data', 'state_pairs', self.args.env_name, self.args.data_name)
+        data_path = os.path.join(os.getcwd(), 'data', 'state_pairs', self.args.env_name, f'{self.args.data_name}.npy')
         data = np.load(data_path)
 
         val_idx = np.random.choice(len(data), int(len(data)*self.args.val_ratio), replace=False)
@@ -61,14 +63,15 @@ class LP_Trainer():
         train_dataset = Data(train_data)
         self.train_dataloader = DataLoader(train_dataset, batch_size=self.args.batch, shuffle=True, num_workers=8)
         val_dataset = Data(val_data)
-        self.val_dataloader = DataLoader(val_dataset, batch_size=self.args.batch, shuffle=True, num_workers=8)
+        self.val_dataloader = DataLoader(val_dataset, batch_size=self.args.batch, shuffle=False, num_workers=8)
     
     def init_model(self):
         self.model = LatentPolicy(
             n_state=self.args.n_state,
             n_latent_action=self.args.n_latent_action,
-            units=self.args.units,
+            units_se=self.args.units_se,
             units_p=self.args.units_p,
+            units_g=self.args.units_g,
             alpha=self.args.alpha,
             device=self.device
         )
@@ -88,11 +91,14 @@ class LP_Trainer():
         self.optimizer_exp = optim.Adam(params_exp, lr=self.args.lr, betas=(0.5, 0.999))
 
     def init_logger(self):
-        # Initialize TensorBoard logger
-        log_dir = os.path.join(os.getcwd(), 'logs', self.args.env_name, 'latent_policy', self.args.version)
-        if not os.path.isdir(log_dir):
-            os.makedirs(log_dir)
-        self.writer = SummaryWriter(log_dir=log_dir)
+        num = len(glob(os.path.join(os.getcwd(), 'runs', self.args.env_name, 'latent_policy', 'model*')))
+        self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'latent_policy', f'model{num+1}')
+        self.log_dir = os.path.join(os.getcwd(), 'logs', self.args.env_name, 'latent_policy', f'model{num+1}')
+        if not os.path.isdir(self.save_path):
+            os.makedirs(self.save_path)
+        if not os.path.isdir(self.log_dir):
+            os.makedirs(self.log_dir)
+        self.writer = SummaryWriter(log_dir=self.log_dir)
 
     def train_one_epoch(self, epoch):
         self.model.train()
@@ -135,7 +141,7 @@ class LP_Trainer():
                 delta_s = batch['delta_s'].to(device=self.device)
 
                 z_p, delta_s_hat = self.model(s)
-                entropy = -torch.sum(F.softmax(z_p, dim=-1) * torch.log(F.softmax(z_p, dim=-1) + 1e-8), dim=1)
+                # entropy = -torch.sum(F.softmax(z_p, dim=-1) * torch.log(F.softmax(z_p, dim=-1) + 1e-8), dim=1)
                 # loss = loss_min(delta_s, delta_s_hat) + loss_exp(delta_s, z_p, delta_s_hat) + self.lambda_epsilon * torch.mean(entropy)
                 loss = loss_min(delta_s, delta_s_hat) + loss_exp(delta_s, z_p, delta_s_hat)
                 val_loss += loss.item()
@@ -144,9 +150,6 @@ class LP_Trainer():
         return val_loss
 
     def save_model(self):
-        self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'latent_policy', self.args.version)
-        if not os.path.isdir(self.save_path):
-            os.makedirs(self.save_path)
         torch.save(self.model.state_dict(), os.path.join(self.save_path, 'best_model.pth'))
         print('Model saved!')
 
@@ -175,6 +178,7 @@ class LP_Trainer():
                     self.save_config()
                     print('Early stopping!')
                     break
+            self.save_config()
 
         print('Finished Training')
 

@@ -3,20 +3,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class StateEncoder(nn.Module):
-    def __init__(self, n_state: int, units: list, device: str='cuda:0', alpha: float=0.2):
+    def __init__(self, n_state: int, units_s_e: list, device: str='cuda:0', alpha: float=0.2):
         super(StateEncoder, self).__init__()
         self.n_state = n_state
-        self.units = units
+        self.units_s_e = units_s_e
         self.device = device
         self.alpha = alpha
 
         self.hidden_layer = []
         
-        for i in range(len(self.units)):
+        for i in range(len(self.units_s_e)):
             if i == 0:
-                self.hidden_layer.append(nn.Linear(self.n_state, self.units[i]))
+                self.hidden_layer.append(nn.Linear(self.n_state, self.units_s_e[i]))
             else:
-                self.hidden_layer.append(nn.Linear(self.units[i-1], self.units[i]))
+                self.hidden_layer.append(nn.Linear(self.units_s_e[i-1], self.units_s_e[i]))
             self.hidden_layer.append(nn.LeakyReLU(self.alpha))
         
         self.hidden_layer = nn.Sequential(*self.hidden_layer)
@@ -27,10 +27,10 @@ class StateEncoder(nn.Module):
         return s_e
     
 class Policy(nn.Module):
-    def __init__(self, s_e_dim: int, n_latent_action: int, units: list, device: str='cuda:0', alpha: float=0.2):
+    def __init__(self, s_e_dim: int, n_latent_action: int, units_p: list, device: str='cuda:0', alpha: float=0.2):
         super(Policy, self).__init__()
         self.s_e_dim = s_e_dim
-        self.units = units
+        self.units_p = units_p
         self.n_latent_action = n_latent_action
         self.device = device
         self.alpha = alpha
@@ -38,16 +38,19 @@ class Policy(nn.Module):
 
         self.hidden_layer = []
         
-        if len(self.units) != 0:
-            for i in range(len(self.units)):
-                if i == 0:
-                    self.hidden_layer.append(nn.Linear(self.s_e_dim, self.units[i]))
-                else:
-                    self.hidden_layer.append(nn.Linear(self.units[i-1], self.units[i]))
-                self.hidden_layer.append(nn.LeakyReLU(self.alpha))
-            self.hidden_layer.append(nn.Linear(self.units[-1], self.n_latent_action))
-        else:
+        if len(self.units_p) == 0:
             self.hidden_layer.append(nn.Linear(self.s_e_dim, self.n_latent_action))
+        else:
+            for i in range(len(self.units_p)):
+                if i == 0:
+                    self.hidden_layer.append(nn.Linear(self.s_e_dim, self.units_p[i]))
+                else:
+                    self.hidden_layer.append(nn.Linear(self.units_p[i-1], self.units_p[i]))
+                self.hidden_layer.append(nn.LeakyReLU(self.alpha))
+            self.hidden_layer.append(nn.Linear(self.units_p[-1], self.n_latent_action))
+
+        # self.hidden_layer.append(nn.Softmax())
+
         self.hidden_layer = nn.Sequential(*self.hidden_layer)
         
     def forward(self, s_e):
@@ -55,12 +58,12 @@ class Policy(nn.Module):
         return z_p
 
 class Generator(nn.Module):
-    def __init__(self, s_e_dim: int, n_state: int, n_latent_action: int, units: list, device: str='cuda:0', alpha: float=0.2):
+    def __init__(self, s_e_dim: int, n_state: int, n_latent_action: int, units_g: list, device: str='cuda:0', alpha: float=0.2):
         super(Generator, self).__init__()
         self.s_e_dim = s_e_dim
         self.n_state = n_state
         self.n_latent_action = n_latent_action
-        self.units = units
+        self.units_g = units_g
         self.device = device
         self.alpha = alpha
 
@@ -76,15 +79,15 @@ class Generator(nn.Module):
 
         self.hidden_layer = []
         
-        for i in range(len(self.units)):
+        for i in range(len(self.units_g)):
             if i == 0:
-                self.hidden_layer.append(nn.Linear(self.s_e_dim, self.units[i]))
+                self.hidden_layer.append(nn.Linear(self.s_e_dim, self.units_g[i]))
                 self.hidden_layer.append(nn.LeakyReLU(self.alpha))
             else:
-                self.hidden_layer.append(nn.Linear(self.units[i-1], self.units[i]))
+                self.hidden_layer.append(nn.Linear(self.units_g[i-1], self.units_g[i]))
                 self.hidden_layer.append(nn.LeakyReLU(self.alpha))
 
-        self.hidden_layer.append(nn.Linear(self.units[i], self.n_state))
+        self.hidden_layer.append(nn.Linear(self.units_g[-1], self.n_state))
         self.hidden_layer = nn.Sequential(*self.hidden_layer)
         
     def forward(self, s_e):
@@ -110,19 +113,20 @@ class Generator(nn.Module):
         return delta_s
 
 class LatentPolicy(nn.Module):
-    def __init__(self, n_state: int, n_latent_action: int, units: list, units_p: list, device: str='cuda:0', alpha: float=0.2):
+    def __init__(self, n_state: int, n_latent_action: int, units_se: list, units_p: list, units_g: list, device: str='cuda:0', alpha: float=0.2):
         super(LatentPolicy, self).__init__()
         self.n_state = n_state
         self.n_latent_action = n_latent_action
-        self.units = units
+        self.units_se = units_se
         self.units_p = units_p
+        self.units_g = units_g
         self.device = device
         self.alpha = alpha
-        self.s_e_dim = self.units[-1]
+        self.s_e_dim = self.units_se[-1]
 
-        self.state_encoder = StateEncoder(self.n_state, self.units, self.device, self.alpha)
-        self.policy = Policy(self.units[-1], self.n_latent_action, self.units_p, self.device, self.alpha)
-        self.generator = Generator(self.units[-1], self.n_state, self.n_latent_action, self.units, self.device, self.alpha)
+        self.state_encoder = StateEncoder(self.n_state, self.units_se, self.device, self.alpha)
+        self.policy = Policy(self.s_e_dim, self.n_latent_action, self.units_p, self.device, self.alpha)
+        self.generator = Generator(self.s_e_dim, self.n_state, self.n_latent_action, self.units_g, self.device, self.alpha)
 
         self.state_encoder.to(device=self.device)
         self.policy.to(device=self.device)
@@ -138,12 +142,18 @@ class LatentPolicy(nn.Module):
 if __name__=="__main__":
     n_state = 2
     n_latent_action = 3
-    units = [64, 32]
+    units_se = [32, 64]
     units_p = []
+    units_g = [32]
     alpha = 0.2
-    model_lp = LatentPolicy(n_state, n_latent_action, units, units_p, alpha)
+    model_lp = LatentPolicy(n_state, n_latent_action, units_se, units_p, units_g, 'cuda:0', alpha)
+
+    model_lp.to(device='cuda:0')
     
-    states = torch.randn(32, n_state)  # Batch size of 32
+    states = torch.randn(32, n_state, device='cuda:0')  # Batch size of 32
+
+    from torchsummary import summary
+    summary(model_lp, input_size=(2,))
 
     # Forward pass through the model
     z_p, delta_s = model_lp(states)

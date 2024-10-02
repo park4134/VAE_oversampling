@@ -16,3 +16,13 @@ def initialize_weights(model):
         if isinstance(m, nn.Linear):
             nn.init.trunc_normal_(m.weight, std=0.01)  # Truncated normal 초기화
             nn.init.constant_(m.bias, 0.01)           # 편향을 0.01로 초기화
+
+def min_action(next_state, next_state_hat):  
+    difference = next_state_hat - next_state
+
+    squared_difference = difference ** 2
+
+    sum_of_squares = torch.sum(squared_difference, dim=-1)
+    distances = torch.sqrt(sum_of_squares)
+    min_actions = torch.argmin(distances, dim=0)
+    return min_actions

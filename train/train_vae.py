@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
+from glob import glob
 
 import os
 import numpy as np
@@ -31,7 +32,6 @@ class VAE_Trainer():
 
     def parse_args(self):
         parser = argparse.ArgumentParser(description="Train a reinforcement learning agent")
-        parser.add_argument("--version", type=str, help="Version of model", default='model')
         parser.add_argument("--predict_mode", type=str, help="predict_mode of model", default='delta')
         parser.add_argument("--env_name", type=str, help="Environment name", default='MountainCar-v0')
         parser.add_argument("--data_name", type=str, help="Expert's data name")
@@ -81,11 +81,14 @@ class VAE_Trainer():
         self.optimizer = optim.Adam(params, lr=self.args.lr)
 
     def init_logger(self):
-        # Initialize TensorBoard logger
-        log_dir = os.path.join(os.getcwd(), 'logs', self.args.env_name, 'vae', self.args.version)
-        if not os.path.isdir(log_dir):
-            os.makedirs(log_dir)
-        self.writer = SummaryWriter(log_dir=log_dir)
+        num = len(glob(os.path.join(os.getcwd(), 'runs', self.args.env_name, 'vae', 'model*')))
+        self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'vae', f'model{num+1}')
+        self.log_dir = os.path.join(os.getcwd(), 'logs', self.args.env_name, 'vae', f'model{num+1}')
+        if not os.path.isdir(self.save_path):
+            os.makedirs(self.save_path)
+        if not os.path.isdir(self.log_dir):
+            os.makedirs(self.log_dir)
+        self.writer = SummaryWriter(log_dir=self.log_dir)
 
     def train_one_epoch(self, epoch):
         self.model.train()
@@ -145,9 +148,6 @@ class VAE_Trainer():
         return val_loss
 
     def save_model(self):
-        self.save_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'vae', self.args.version)
-        if not os.path.isdir(self.save_path):
-            os.makedirs(self.save_path)
         torch.save(self.model.state_dict(), os.path.join(self.save_path, 'best_model.pth'))
         print('Model saved!')
 

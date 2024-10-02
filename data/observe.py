@@ -14,7 +14,7 @@ class Observer():
     def parse_args(self):
         parser = argparse.ArgumentParser(description="Train a reinforcement learning agent.")
         parser.add_argument("--env_name", type=str, help="Environment name.", default='MountainCar-v0')
-        parser.add_argument("--data_len", type=int, help="Data length to observate.", default=50000)
+        parser.add_argument("--data_name", type=str, help="Expert's data name")
         parser.add_argument("--expert", type=str, help="Expert name.", default='PPO_-200.00')
         parser.add_argument("--method", type=str, help="Expert's method.", default='PPO')
         parser.add_argument("--eps", type=float, help="Noise rate of expert's actions.", default=0.0)
@@ -22,7 +22,7 @@ class Observer():
         return args
     
     def get_path(self):
-        self.expert_path = os.path.join(os.getcwd(), 'runs', 'experts', self.args.env_name, self.args.expert)
+        self.expert_path = os.path.join(os.getcwd(), 'runs', self.args.env_name, 'experts', self.args.expert.split('_')[0], self.args.expert)
         self.save_path = os.path.join(os.getcwd(), 'data', 'state_pairs', self.args.env_name)
         self.filename = f'{self.args.expert}_{self.args.data_len}_{self.args.eps}'
         if not os.path.isdir(self.save_path):
